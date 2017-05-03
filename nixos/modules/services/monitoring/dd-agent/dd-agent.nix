@@ -192,6 +192,10 @@ in {
       description = "Datadog agent monitor";
       path = [ pkgs."dd-agent" pkgs.python pkgs.sysstat pkgs.procps ];
       wantedBy = [ "multi-user.target" ];
+      requires = [
+        "network-online.target"
+        "nss-lookup.target"
+      ];
       serviceConfig = {
         ExecStart = "${pkgs.dd-agent}/bin/dd-agent foreground";
         User = "datadog";
@@ -206,6 +210,10 @@ in {
       description = "Datadog statsd";
       path = [ pkgs."dd-agent" pkgs.python pkgs.procps ];
       wantedBy = [ "multi-user.target" ];
+      requires = [
+        "network-online.target"
+        "nss-lookup.target"
+      ];
       serviceConfig = {
         ExecStart = "${pkgs.dd-agent}/bin/dogstatsd";
         User = "datadog";
