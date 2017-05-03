@@ -28,14 +28,14 @@ let
   };
 
 in stdenv.mkDerivation rec {
-  version = "5.11.2";
+  version = "5.13.2";
   name = "dd-agent-${version}";
 
   src = fetchFromGitHub {
     owner  = "datadog";
     repo   = "dd-agent";
     rev    = version;
-    sha256 = "1iqxvgpsqibqw3vk79158l2pnb6y4pjhjp2d6724lm5rpz4825lx";
+    sha256 = "0x2bxi70l2yf0wi232qksvcscjdpjg8l7dmgg1286vqryyfazfjb";
   };
 
   buildInputs = [
@@ -51,6 +51,7 @@ in stdenv.mkDerivation rec {
     pythonPackages.pymongo_2_9_1
     pythonPackages.python-etcd
     pythonPackages.consul
+    pythonPackages.kazoo
     docker_1_10
   ];
   propagatedBuildInputs = with pythonPackages; [ python tornado ];
@@ -59,6 +60,8 @@ in stdenv.mkDerivation rec {
     mkdir -p $out/bin
     cp -R $src $out/agent
     chmod u+w -R $out
+    # needed for dd-agent service
+    mkdir -p $out/agent/checks.d
     PYTHONPATH=$out/agent:$PYTHONPATH
     ln -s $out/agent/agent.py $out/bin/dd-agent
     ln -s $out/agent/dogstatsd.py $out/bin/dogstatsd
