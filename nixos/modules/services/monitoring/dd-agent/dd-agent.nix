@@ -17,19 +17,24 @@ let
     dogstatsd_log_file: /var/log/datadog/dogstatsd.log
     pup_log_file:       /var/log/datadog/pup.log
 
+    non_local_traffic: no
+    bind_host: ${cfg.bind_host}
+    ${optionalString (cfg.dogstatsd.enable) "dogstatsd_port: ${toString cfg.dogstatsd.port}"}
+    ${optionalString (cfg.dogstatsd.enable) "dogstatsd_interval: ${toString cfg.dogstatsd.interval}"}
+    ${optionalString (cfg.forwarder.enable) "listen_port: ${toString cfg.forwarder.port}"}
+    ${optionalString (cfg.forwarder.graphite.enable) "graphite_listen_port: ${toString cfg.forwarder.graphite.port}"}
+    ${optionalString (cfg.forwarder.ganglia.enable) "ganglia_host: ${cfg.forwarder.ganglia.host}"}
+    ${optionalString (cfg.forwarder.ganglia.enable) "ganglia_port: ${toString cfg.forwarder.ganglia.port}"}
+    ${optionalString (cfg.tags != null ) "tags: ${concatStringsSep "," cfg.tags }"}
+
     # proxy_host: my-proxy.com
     # proxy_port: 3128
     # proxy_user: user
     # proxy_password: password
 
-    # tags: mytag0, mytag1
-    ${optionalString (cfg.tags != null ) "tags: ${concatStringsSep "," cfg.tags }"}
-
     # collect_ec2_tags: no
     # recent_point_threshold: 30
     # use_mount: no
-    # listen_port: 17123
-    # graphite_listen_port: 17124
     # non_local_traffic: no
     # use_curl_http_client: False
     # bind_host: localhost
@@ -39,16 +44,12 @@ let
     # pup_interface: localhost
     # pup_url: http://localhost:17125
 
-    # dogstatsd_port : 8125
     # dogstatsd_interval : 10
     # dogstatsd_normalize : yes
     # statsd_forward_host: address_of_own_statsd_server
     # statsd_forward_port: 8125
 
     # device_blacklist_re: .*\/dev\/mapper\/lxc-box.*
-
-    # ganglia_host: localhost
-    # ganglia_port: 8651
   '';
 
   diskConfig = pkgs.writeText "disk.yaml" ''
@@ -139,6 +140,76 @@ in {
       type = types.uniq (types.nullOr types.string);
     };
 
+    bind_host = mkOption {
+      description = "The host to bind services on";
+      default = "127.0.0.1";
+      example = "::ffff";
+      type = types.string;
+    };
+
+    dogstatsd = {
+      enable = mkOption {
+        description = "Whether to enable Dogstatsd service for statsd aggregation";
+        default = true;
+        type = types.bool;
+      };
+      port = mkOption {
+        description = "Port to bind to for Dogstatsd service";
+        default = 8125;
+        type = types.int;
+      };
+      interval = mkOption {
+        description = "Interval in seconds to flush statsd metrics to server";
+        default = 10;
+        type = types.int;
+      };
+    };
+
+    forwarder = {
+      enable = mkOption {
+        description = "Whether to enable Datadog forwarder";
+        default = false;
+        type = types.bool;
+      };
+
+      port = mkOption {
+        description = "Port for Datadog forwarder to listen on";
+        default = 17123;
+        type = types.int;
+      };
+
+      graphite = {
+        enable = mkOption {
+          description = "Whether to enable Graphite Datadog forwarding integration";
+          default = false;
+          type = types.bool;
+        };
+        port = mkOption {
+          description = "Port for Graphite integration to listen on";
+          default = 17124;
+          type = types.int;
+        };
+      };
+
+      ganglia = {
+        enable = mkOption {
+          description = "Whether to enable Ganglia Datadog forwarding integration";
+          default = false;
+          type = types.bool;
+        };
+        host = mkOption {
+          description = "Host for Ganglia integration to send data to";
+          default = "localhost";
+          type = types.string;
+        };
+        port = mkOption {
+          description = "Port for Ganglia integration to send data to";
+          default = 8651;
+          type = types.int;
+        };
+      };
+    };
+
     postgresqlConfig = mkOption {
       description = "Datadog PostgreSQL integration configuration";
       default = null;
@@ -195,6 +266,7 @@ in {
       requires = [
         "network-online.target"
         "nss-lookup.target"
+        "time-sync.target"
       ];
       serviceConfig = {
         ExecStart = "${pkgs.dd-agent}/bin/dd-agent foreground";
@@ -206,13 +278,14 @@ in {
       restartTriggers = [ pkgs.dd-agent ddConf diskConfig networkConfig postgresqlConfig nginxConfig mongoConfig jmxConfig processConfig ];
     };
 
-    systemd.services.dogstatsd = {
+    systemd.services.dogstatsd = lib.mkIf (cfg.dogstatsd.enable) {
       description = "Datadog statsd";
       path = [ pkgs."dd-agent" pkgs.python pkgs.procps ];
       wantedBy = [ "multi-user.target" ];
       requires = [
         "network-online.target"
         "nss-lookup.target"
+        "time-sync.target"
       ];
       serviceConfig = {
         ExecStart = "${pkgs.dd-agent}/bin/dogstatsd";
@@ -224,6 +297,26 @@ in {
         RestartSec = 2;
       };
       restartTriggers = [ pkgs.dd-agent ddConf diskConfig networkConfig postgresqlConfig nginxConfig mongoConfig jmxConfig processConfig ];
+    };
+
+    systemd.services.dd-forwarder = lib.mkIf (cfg.forwarder.enable) {
+      description = "Datadog forwarder";
+      path = [ pkgs."dd-agent" pkgs.python pkgs.procps ];
+      wantedBy = [ "multi-user.target" ];
+      requires = [
+        "network-online.target"
+        "nss-lookup.target"
+        "time-sync.target"
+      ];
+      serviceConfig = {
+        ExecStart = "${pkgs.dd-agent}/bin/dd-forwarder";
+        User = "datadog";
+        Group = "datadog";
+        Type = "simple";
+        Restart = "always";
+        RestartSec = 2;
+      };
+      restartTriggers = [ pkgs.dd-agent ddConf ];
     };
 
     systemd.services.dd-jmxfetch = lib.mkIf (cfg.jmxConfig != null) {
