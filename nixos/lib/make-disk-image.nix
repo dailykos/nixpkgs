@@ -64,7 +64,7 @@ let
     ${channelSources}
   '';
 
-  prepareImageInputs = with pkgs; [ rsync utillinux parted e2fsprogs lkl fakeroot config.system.build.nixos-prepare-root ] ++ stdenv.initialPath;
+  prepareImageInputs = with pkgs; [ rsync utillinux parted e2fsprogs lkl fakeroot libfaketime config.system.build.nixos-prepare-root ] ++ stdenv.initialPath;
 
   # I'm preserving the line below because I'm going to search for it across nixpkgs to consolidate
   # image building logic. The comment right below this now appears in 4 different places in nixpkgs :)
@@ -87,7 +87,7 @@ let
     ''}
 
     mkfs.${fsType} -F -L nixos -E offset=$offset $diskImage
-  
+
     root="$PWD/root"
     mkdir -p $root
 
@@ -124,7 +124,7 @@ let
     fakeroot nixos-prepare-root $root ${channelSources} ${config.system.build.toplevel} closure
 
     echo "copying staging root to image..."
-    cptofs ${pkgs.lib.optionalString partitioned "-P 1"} -t ${fsType} -i $diskImage $root/* /
+    faketime -f "1970-01-01 00:00:01" cptofs ${pkgs.lib.optionalString partitioned "-P 1"} -t ${fsType} -i $diskImage $root/* /
   '';
 in pkgs.vmTools.runInLinuxVM (
   pkgs.runCommand name
