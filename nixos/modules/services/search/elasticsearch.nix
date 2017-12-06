@@ -55,8 +55,8 @@ in {
 
     package = mkOption {
       description = "Elasticsearch package to use.";
-      default = pkgs.elasticsearch2;
-      defaultText = "pkgs.elasticsearch2";
+      default = pkgs.elasticsearch5;
+      defaultText = "pkgs.elasticsearch5";
       type = types.package;
     };
 
@@ -92,8 +92,6 @@ in {
         node.name: "elasticsearch"
         node.master: true
         node.data: false
-        index.number_of_shards: 5
-        index.number_of_replicas: 1
       '';
     };
 
@@ -134,17 +132,43 @@ in {
       '';
     };
 
+    logsDir = mkOption {
+      type = types.path;
+      default = "/var/log/elasticsearch";
+      description = ''
+        Log directory for elasticsearch.
+      '';
+    };
+
     extraCmdLineOptions = mkOption {
       description = "Extra command line options for the elasticsearch launcher.";
       default = [];
       type = types.listOf types.str;
     };
 
+    defaultJavaOptions = mkOption {
+      description = "Default command line options for Java";
+      default = [
+        "-Des.path.logs=${cfg.logsDir}"
+        "-Des.path.data=${cfg.dataDir}"
+        "-Xss256k"
+        "-Xmx2g"
+      ];
+      example = [
+        "-Des.security.manager.enabled=false"
+      ];
+    };
+
     extraJavaOptions = mkOption {
       description = "Extra command line options for Java.";
       default = [];
+      example = [
+        "-XX:+UseCompressedOops"
+        "-XX:+HeapDumpOnOutOfMemoryError"
+        "-XX:+PrintFlagsFinal"
+        "-Djava.net.preferIPv4Stack=true"
+      ];
       type = types.listOf types.str;
-      example = [ "-Djava.net.preferIPv4Stack=true" ];
     };
 
     plugins = mkOption {
@@ -164,8 +188,11 @@ in {
       after = [ "network.target" ];
       path = [ pkgs.inetutils ];
       environment = {
+        ES_PATH_CONF = confDir;
+        ES_PLUGINS_DIR = esPlugins;
         ES_HOME = cfg.dataDir;
-        ES_JAVA_OPTS = toString ([ "-Des.path.conf=${configDir}" ] ++ cfg.extraJavaOptions);
+        ES_JAVA_OPTS = toString (cfg.defaultJavaOptions ++ cfg.extraJavaOptions);
+        ES_JVM_OPTS = toString (cfg.defaultJavaOptions ++ cfg.extraJavaOptions);
       };
       serviceConfig = {
         ExecStart = "${cfg.package}/bin/elasticsearch ${toString cfg.extraCmdLineOptions}";
@@ -183,12 +210,17 @@ in {
         ''}
 
         mkdir -m 0700 -p ${cfg.dataDir}
+        mkdir -m 0700 -p ${cfg.logsDir}
 
         # Install plugins
         ln -sfT ${esPlugins}/plugins ${cfg.dataDir}/plugins
         ln -sfT ${cfg.package}/lib ${cfg.dataDir}/lib
         ln -sfT ${cfg.package}/modules ${cfg.dataDir}/modules
-        if [ "$(id -u)" = 0 ]; then chown -R elasticsearch ${cfg.dataDir}; fi
+        ln -sfT ${cfg.package}/logs ${cfg.logsDir}
+        if [ "$(id -u)" = 0 ]; then
+          chown -R elasticsearch:elasticsearch "${cfg.dataDir}" "${cfg.logsDir}"
+        fi
+
       '';
     };
 
